@@ -39,6 +39,13 @@ def softmax_loss_naive(W, X, y, reg):
         logp = np.log(p)
 
         loss -= logp[y[i]]  # negative log probability is the loss
+        # compute the gradient
+        for j in range(num_classes):
+            # probability for class j
+            pj = p[j]
+            # indicator function for whether j is the correct class
+            indicator = 1 if j == y[i] else 0
+            dW[:, j] += (pj - indicator) * X[i]
 
 
     # normalized hinge loss plus regularization
@@ -52,7 +59,7 @@ def softmax_loss_naive(W, X, y, reg):
     # loss is being computed. As a result you may need to modify some of the    #
     # code above to compute the gradient.                                       #
     #############################################################################
-
+    dW = dW / num_train + 2 * reg * W
 
     return loss, dW
 
@@ -73,7 +80,15 @@ def softmax_loss_vectorized(W, X, y, reg):
     # Implement a vectorized version of the softmax loss, storing the           #
     # result in loss.                                                           #
     #############################################################################
-
+    num_train = X.shape[0]
+    scores = X.dot(W)
+    # compute the probabilities in numerically stable way
+    scores -= np.max(scores, axis=1, keepdims=True)
+    p = np.exp(scores)
+    p /= np.sum(p, axis=1, keepdims=True)
+    logp = np.log(p)
+    loss = -np.sum(logp[np.arange(num_train), y])
+    loss = loss / num_train + reg * np.sum(W * W)
 
     #############################################################################
     # TODO:                                                                     #
@@ -84,6 +99,8 @@ def softmax_loss_vectorized(W, X, y, reg):
     # to reuse some of the intermediate values that you used to compute the     #
     # loss.                                                                     #
     #############################################################################
-
+    p[np.arange(num_train), y] -= 1  # subtract 1 for correct classes
+    dW = X.T.dot(p)
+    dW = dW / num_train + 2 * reg * W
 
     return loss, dW
