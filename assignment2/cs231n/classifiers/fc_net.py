@@ -172,6 +172,9 @@ class FullyConnectedNet(object):
             else:
                 a, cache_relu = relu_forward(a)
                 cache['layer' + str(i + 1)] = (cache_, cache_relu)
+            if self.use_dropout:
+                a, cache_d = dropout_forward(a, self.dropout_param)
+                cache['layer' + str(i + 1)] = cache['layer' + str(i + 1)] + (cache_d,)
         
         W = self.params['W' + str(self.num_layers)]
         b = self.params['b' + str(self.num_layers)]
@@ -207,6 +210,10 @@ class FullyConnectedNet(object):
         grads['W' + str(self.num_layers)] = dW + reg * self.params['W' + str(self.num_layers)]
         grads['b' + str(self.num_layers)] = db
         for i in range(self.num_layers - 1, 0, -1):
+            if self.use_dropout:
+                cache_d = cache['layer' + str(i)][-1]
+                cache['layer' + str(i)] = cache['layer' + str(i)][:-1]
+                dx = dropout_backward(dx, cache_d)
             if self.normalization in ['batchnorm', 'layernorm']:
                 cache_, cache_bn, cache_relu = cache['layer' + str(i)]
                 dx = relu_backward(dx, cache_relu)
