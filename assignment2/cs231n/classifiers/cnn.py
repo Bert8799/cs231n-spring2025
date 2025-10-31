@@ -61,7 +61,22 @@ class ThreeLayerConvNet(object):
         # **the width and height of the input are preserved**. Take a look at      #
         # the start of the loss() function to see how that happens.                #
         ############################################################################
-        # 
+        C, H, W = input_dim
+        F = num_filters
+        HH = WW = filter_size
+
+        # ---- 1. 卷积层 ----
+        self.params['W1'] = np.random.randn(F, C, HH, WW) * weight_scale
+        self.params['b1'] = np.zeros(F)
+
+        # ---- 2. 隐藏全连接层 ----
+        # 因为假设卷积后图像大小不变，池化层是2x2的，最终大小减半
+        self.params['W2'] = np.random.randn(F * (H//2) * (W//2), hidden_dim) * weight_scale
+        self.params['b2'] = np.zeros(hidden_dim)
+
+        # ---- 3. 输出全连接层 ----
+        self.params['W3'] = np.random.randn(hidden_dim, num_classes) * weight_scale
+        self.params['b3'] = np.zeros(num_classes) 
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
@@ -96,7 +111,9 @@ class ThreeLayerConvNet(object):
         # Remember you can use the functions defined in cs231n/fast_layers.py and  #
         # cs231n/layer_utils.py in your implementation (already imported).         #
         ############################################################################
-        # 
+        a, cache_conv = conv_relu_pool_forward(X, W1, b1, conv_param, pool_param)
+        a, cache_1 = affine_relu_forward(a, W2, b2)
+        scores, cache_2 = affine_forward(a, W3, b3)
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
@@ -115,7 +132,19 @@ class ThreeLayerConvNet(object):
         # automated tests, make sure that your L2 regularization includes a factor #
         # of 0.5 to simplify the expression for the gradient.                      #
         ############################################################################
-        # 
+        reg = self.reg
+        loss, dscores = softmax_loss(scores, y)
+        loss += 0.5 * reg * (np.sum(W1 * W1) + np.sum(W2 * W2) + np.sum(W3 * W3))
+
+        dx, dW, db = affine_backward(dscores, cache_2)
+        grads['W3'] = dW + reg * W3
+        grads['b3'] = db
+        dx, dW, db = affine_relu_backward(dx, cache_1)
+        grads['W2'] = dW + reg * W2
+        grads['b2'] = db
+        dx, dW, db = conv_relu_pool_backward(dx, cache_conv)
+        grads['W1'] = dW + reg * W1
+        grads['b1'] = db
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
