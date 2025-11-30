@@ -65,7 +65,8 @@ class CaptioningSolverTransformer(object):
         - verbose: Boolean; if set to false then no output will be printed during
           training.
         """
-        self.model = model
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.model = model.to(self.device)
         self.data = data
 
         # Unpack keyword arguments
@@ -112,14 +113,14 @@ class CaptioningSolverTransformer(object):
 
         mask = captions_out != self.model._null
 
-        t_features = torch.Tensor(features)
-        t_captions_in = torch.LongTensor(captions_in)
-        t_captions_out = torch.LongTensor(captions_out)
-        t_mask = torch.LongTensor(mask)
+        t_features = torch.Tensor(features).to(self.device)
+        t_captions_in = torch.LongTensor(captions_in).to(self.device)
+        t_captions_out = torch.LongTensor(captions_out).to(self.device)
+        t_mask = torch.LongTensor(mask).to(self.device)
         logits = self.model(t_features, t_captions_in)
 
         loss = self.transformer_temporal_softmax_loss(logits, t_captions_out, t_mask)
-        self.loss_history.append(loss.detach().numpy())
+        self.loss_history.append(loss.detach().cpu().numpy())
         self.optim.zero_grad()
         loss.backward()
         self.optim.step()

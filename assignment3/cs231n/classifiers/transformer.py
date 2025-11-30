@@ -88,7 +88,18 @@ class CaptioningTransformer(nn.Module):
         #  3) Finally, apply the decoder features on the text & image embeddings   #
         #     along with the tgt_mask. Project the output to scores per token      #
         ############################################################################
+        captions_embedded = self.embedding(captions) # (N, T, W)
+        captions_pos_encoded = self.positional_encoding(captions_embedded)
 
+        features_projected = self.visual_projection(features)
+        features_projected = features_projected.unsqueeze(1) # (N, 1, W)
+
+        tgt_mask = torch.tril(torch.ones((T, T), device=captions.device)).bool()
+
+        decoder_output = self.transformer(tgt=captions_pos_encoded,
+                                          memory=features_projected,
+                                          tgt_mask=tgt_mask) # (N, T, W)
+        scores = self.output(decoder_output) # (N, T, V)
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
@@ -107,15 +118,17 @@ class CaptioningTransformer(nn.Module):
          - captions: captions for each example, of shape (N, max_length)
         """
         with torch.no_grad():
-            features = torch.Tensor(features)
+            device = next(self.parameters()).device
+            features = torch.Tensor(features).to(device)
             N = features.shape[0]
 
             # Create an empty captions tensor (where all tokens are NULL).
             captions = self._null * np.ones((N, max_length), dtype=np.int32)
+            captions = torch.LongTensor(captions).to(device)
 
             # Create a partial caption, with only the start token.
             partial_caption = self._start * np.ones(N, dtype=np.int32)
-            partial_caption = torch.LongTensor(partial_caption)
+            partial_caption = torch.LongTensor(partial_caption).to(device)
             # [N] -> [N, 1]
             partial_caption = partial_caption.unsqueeze(1)
 
@@ -130,11 +143,11 @@ class CaptioningTransformer(nn.Module):
                 word = torch.argmax(output_logits, axis=1)
 
                 # Update our overall caption and our current partial caption.
-                captions[:, t] = word.numpy()
+                captions[:, t] = word
                 word = word.unsqueeze(1)
                 partial_caption = torch.cat([partial_caption, word], dim=1)
 
-            return captions
+            return captions.cpu().numpy()
 
 
 def clones(module, N):
@@ -240,7 +253,11 @@ class VisionTransformer(nn.Module):
         #    You may find torch.mean useful.                                      #
         # 5. Feed it through a linear layer to produce class logits.              #
         ############################################################################
-
+        patches = self.patch_embed(x)  # (N, num_patches, embed_dim)
+        patches_pos_encoded = self.positional_encoding(patches)
+        transformer_output = self.transformer(patches_pos_encoded)  # (N, num_patches, embed_dim)
+        pooled_output = torch.mean(transformer_output, dim=1)  # (N, embed_dim)
+        logits = self.head(pooled_output)  # (N, num_classes)
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
