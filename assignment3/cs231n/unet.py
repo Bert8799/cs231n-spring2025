@@ -180,7 +180,11 @@ class Unet(nn.Module):
             # Make sure to exactly follow this structure of ModuleList in order to
             # load a pretrained checkpoint.
             ##################################################################
-
+            down_block = nn.ModuleList([
+                ResnetBlock(dim_in, dim_in, context_dim=context_dim),
+                ResnetBlock(dim_in, dim_in, context_dim=context_dim),
+                Downsample(dim_in, dim_out),
+            ])
             ##################################################################
             self.downs.append(down_block)
 
@@ -204,9 +208,13 @@ class Unet(nn.Module):
             # Don't forget to account for the skip connections by having 2 x dim_out
             # channels at the input of both ResnetBlocks.
             ##################################################################
-
-            self.ups.append(up_block)
+            up_block = nn.ModuleList([
+                Upsample(dim_in, dim_out),
+                ResnetBlock(dim_out * 2, dim_out, context_dim=context_dim),
+                ResnetBlock(dim_out * 2, dim_out, context_dim=context_dim),
+            ])
             ##################################################################
+            self.ups.append(up_block)
 
         # Final convolution to map to the output channels
         self.final_conv = nn.Conv2d(dim, channels, 1)
@@ -226,7 +234,10 @@ class Unet(nn.Module):
         # You will have to call self.forward two times.
         # For unconditional sampling, pass None in`text_emb`.
         ##################################################################
-
+        eps_cond = self.forward(x, time, model_kwargs=model_kwargs)
+        model_kwargs["text_emb"] = None # Unconditional
+        eps_uncond = self.forward(x, time, model_kwargs=model_kwargs)
+        x = (cfg_scale + 1) * eps_cond - cfg_scale * eps_uncond
         ##################################################################
 
         return x
@@ -281,7 +292,28 @@ class Unet(nn.Module):
         #      skip connection from the downsampling path.
         #    - Make sure to pass the context to each ResNet block.
         ##################################################################
-
+        skip_connections = []
+        # Downsampling
+        for down_block in self.downs:
+            resnet1, resnet2, downsample = down_block
+            x = resnet1(x, context=context)
+            skip_connections.append(x)
+            x = resnet2(x, context=context)
+            skip_connections.append(x)
+            x = downsample(x)
+        # Middle
+        x = self.mid_block1(x, context=context)
+        x = self.mid_block2(x, context=context)
+        # Upsampling
+        for up_block in self.ups:
+            upsample, resnet1, resnet2 = up_block
+            x = upsample(x)
+            skip1 = skip_connections.pop()
+            skip2 = skip_connections.pop()
+            x = torch.cat([x, skip1], dim=1)
+            x = resnet1(x, context=context)
+            x = torch.cat([x, skip2], dim=1)
+            x = resnet2(x, context=context)
         ##################################################################
 
         # Final block
